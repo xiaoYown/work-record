@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>快速添加日志</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      background-color: #f5f5f5;
+      margin: 0;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      box-sizing: border-box;
+    }
+    
+    .quick-log-container {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+    
+    textarea {
+      flex: 1;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 10px;
+      font-size: 14px;
+      margin-bottom: 10px;
+      resize: none;
+    }
+    
+    .actions {
+      display: flex;
+      justify-content: space-between;
+    }
+    
+    .tags {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 10px;
+    }
+    
+    .tag {
+      background-color: #e0e0e0;
+      border-radius: 12px;
+      padding: 2px 8px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    
+    .tag.active {
+      background-color: #007aff;
+      color: white;
+    }
+    
+    button {
+      background-color: #007aff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 8px 16px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    
+    button.secondary {
+      background-color: #e0e0e0;
+      color: #333;
+    }
+    
+    button:hover {
+      opacity: 0.9;
+    }
+    
+    .git-actions {
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="quick-log-container">
+    <textarea id="log-content" placeholder="输入今日工作内容..."></textarea>
+    
+    <div class="tags">
+      <div class="tag" data-tag="工作">工作</div>
+      <div class="tag" data-tag="问题">问题</div>
+      <div class="tag" data-tag="学习">学习</div>
+      <div class="tag" data-tag="计划">计划</div>
+      <div class="tag" data-tag="其他">其他</div>
+    </div>
+    
+    <div class="actions">
+      <button id="fetch-git" class="secondary">提取Git提交</button>
+      <div>
+        <button id="cancel">取消</button>
+        <button id="save">保存</button>
+      </div>
+    </div>
+  </div>
+  
+  <script type="module">
+    // 导入所需的 Tauri API
+    import { invoke } from '@tauri-apps/api/tauri';
+    import { appWindow } from '@tauri-apps/api/window';
+    
+    // 当前选中的标签
+    const selectedTags = new Set();
+    
+    // 初始化页面
+    document.addEventListener('DOMContentLoaded', () => {
+      // 设置标签点击事件
+      document.querySelectorAll('.tag').forEach(tag => {
+        tag.addEventListener('click', () => {
+          const tagName = tag.getAttribute('data-tag');
+          if (tagName) {
+            if (selectedTags.has(tagName)) {
+              selectedTags.delete(tagName);
+              tag.classList.remove('active');
+            } else {
+              selectedTags.add(tagName);
+              tag.classList.add('active');
+            }
+          }
+        });
+      });
+      
+      // 设置按钮事件
+      document.getElementById('save')?.addEventListener('click', saveLog);
+      document.getElementById('cancel')?.addEventListener('click', () => {
+        appWindow.hide();
+      });
+      document.getElementById('fetch-git')?.addEventListener('click', fetchGitCommits);
+      
+      // 聚焦文本区域
+      document.getElementById('log-content')?.focus();
+    });
+    
+    // 保存日志
+    async function saveLog() {
+      const content = document.getElementById('log-content')?.value || '';
+      
+      if (!content.trim()) {
+        alert('请输入日志内容');
+        return;
+      }
+      
+      try {
+        await invoke('add_log_entry', {
+          content,
+          source: 'manual',
+          tags: Array.from(selectedTags),
+        });
+        
+        // 保存成功后隐藏窗口
+        appWindow.hide();
+      } catch (error) {
+        alert(`保存失败: ${error}`);
+      }
+    }
+    
+    // 获取Git提交信息
+    async function fetchGitCommits() {
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const commits = await invoke('fetch_git_commits', {
+          date: today,
+        });
+        
+        if (commits && commits.length > 0) {
+          const logContent = document.getElementById('log-content');
+          const commitMessages = commits
+            .map(commit => `- ${commit.message}`)
+            .join('\n');
+          
+          if (logContent) {
+            // 如果文本区域已有内容，添加到现有内容
+            const currentContent = logContent.value;
+            logContent.value = currentContent ? 
+              `${currentContent}\n\nGit提交:\n${commitMessages}` : 
+              `Git提交:\n${commitMessages}`;
+          }
+        } else {
+          alert('今日没有Git提交记录');
+        }
+      } catch (error) {
+        alert(`获取Git提交失败: ${error}`);
+      }
+    }
+  </script>
+</body>
+</html> 

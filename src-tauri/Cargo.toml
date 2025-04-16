@@ -1,0 +1,42 @@
+[package]
+name = "work-record"
+version = "0.1.0"
+description = "工作日志记录工具"
+authors = ["xiaoyown"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "work_record_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+# 定义CLI二进制target
+[[bin]]
+name = "wr-cli"
+path = "src/bin/work-record.rs"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "1.5", features = [
+    "api-all",
+    "macos-private-api",
+    "system-tray"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.32", features = ["full"] }
+chrono = { version = "0.4", features = ["serde"] }
+git2 = "0.18"
+reqwest = { version = "0.11", features = ["json"] }
+anyhow = "1.0"
+thiserror = "1.0"
+log = "0.4"
+dirs = "5.0"
+clap = { version = "4.4", features = ["derive"] }
+env_logger = "0.10.0"
+
