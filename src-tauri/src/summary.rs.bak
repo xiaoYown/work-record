@@ -8,8 +8,9 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use futures_util::StreamExt;
+use std::sync::Arc;
 
+/// 摘要类型
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum SummaryType {
     /// 周摘要
@@ -350,6 +351,8 @@ impl SummaryGenerator {
     where
         F: Fn(&str) + Send + Sync + 'static,
     {
+        let progress_callback = Arc::new(progress_callback);
+        
         // 将日志合并为一个字符串
         let mut logs_str = String::new();
         for (date, entries) in logs.iter() {
@@ -389,37 +392,12 @@ impl SummaryGenerator {
             }
             _ => {
                 // 外部API (流式)
-                let summary = self.generate_with_external_api_stream(&prompt, &prompt_system, &logs_str, progress_callback).await?;
-                
-                // 流处理完成后，将结果写入文件
-                let output_dir = &self.settings.log_output_dir;
-                let date_format = Local::now().format("%Y-%m-%d").to_string();
-                let filename = format!("{}-{}.md", date_format, &config.title);
-                let path = Path::new(output_dir).join(filename);
-                
-                // 确保目录存在
-                if let Some(parent) = path.parent() {
-                    if !parent.exists() {
-                        fs::create_dir_all(parent).map_err(|e| {
-                            log::error!("创建目录失败: {}", e);
-                            AppError::IoError(e)
-                        })?;
-                    }
-                }
-                
-                fs::write(&path, &summary).map_err(|e| {
-                    log::error!("保存摘要到文件失败: {}", e);
-                    AppError::IoError(e)
-                })?;
-                
-                log::info!("摘要已保存到文件: {:?}", path);
-                
-                Ok(summary)
+                self.generate_with_external_api_stream(&prompt, &prompt_system, &logs_str, progress_callback).await
             }
         }
     }
     
-    /// 外部API流式生成摘要
+    /// 使用外部API流式生成摘要
     async fn generate_with_external_api_stream<F>(
         &self,
         prompt: &str,
@@ -445,7 +423,7 @@ impl SummaryGenerator {
             })?;
         
         // 构建请求体
-        let msgs = vec![
+        let mut msgs = vec![
             serde_json::json!({
                 "role": "system",
                 "content": prompt_system
@@ -597,6 +575,20 @@ impl SummaryGenerator {
                     return Err(AppError::SummaryError(format!("读取响应流失败: {}", e)));
                 }
             }
+        }
+        
+        // 流处理完成后，可以选择将结果写入文件
+        if let Some(ref doc_dir) = self.settings.doc_dir {
+            let date_format = format!("{}", Local::now().format("%Y-%m-%d"));
+            let filename = format!("{}-{}.md", date_format, config.title);
+            let path = Path::new(doc_dir).join(&filename);
+            
+            fs::write(&path, &result).map_err(|e| {
+                log::error!("保存摘要到文件失败: {}", e);
+                AppError::IoError(format!("保存摘要到文件失败: {}", e))
+            })?;
+            
+            log::info!("摘要已保存到文件: {:?}", path);
         }
         
         Ok(result)

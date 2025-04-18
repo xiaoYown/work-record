@@ -21,9 +21,16 @@ class LogFilesPanel extends HTMLElement {
    */
   private async loadLogFiles() {
     try {
-      // @ts-ignore - Tauri API
-      const { invoke } = window.__TAURI__.core;
+      console.log('开始加载日志文件列表');
+      
+      // 尝试正确地导入 Tauri invoke
+      // @ts-ignore - 动态导入Tauri
+      const { invoke } = await import('@tauri-apps/api/tauri');
+      
+      console.log('调用 get_log_files 命令');
       this.logFiles = await invoke('get_log_files');
+      
+      console.log('获取到日志文件列表:', this.logFiles);
       this.renderLogFilesList();
       
       // 如果有日志文件，自动加载第一个
@@ -32,7 +39,7 @@ class LogFilesPanel extends HTMLElement {
       }
     } catch (error) {
       console.error('加载日志文件失败:', error);
-      this.showError('加载日志文件失败，请重试');
+      this.showError(`加载日志文件失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -44,15 +51,17 @@ class LogFilesPanel extends HTMLElement {
       const date = fileName.replace('.json', '');
       this.currentFile = fileName;
 
-      // @ts-ignore - Tauri API
-      const { invoke } = window.__TAURI__.core;
+      // 尝试正确地导入 Tauri invoke
+      // @ts-ignore - 动态导入Tauri
+      const { invoke } = await import('@tauri-apps/api/tauri');
+      
       this.logEntries = await invoke('get_log_entries', { date });
       
       this.renderLogEntries();
       this.updateSelectedFile();
     } catch (error) {
       console.error('加载日志条目失败:', error);
-      this.showError('加载日志条目失败，请重试');
+      this.showError(`加载日志条目失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

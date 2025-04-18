@@ -1,14 +1,16 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+use env_logger;
 use tauri::Manager;
 
-mod app_state;
+pub mod app_state;
 pub mod cli;
 mod commands;
-mod errors;
+pub mod errors;
 mod git_utils;
 mod log_manager;
-mod settings;
-mod summary;
+pub mod log_summary_cli;
+pub mod settings;
+pub mod summary;
 mod system_tray;
 
 use app_state::AppState;
@@ -21,12 +23,16 @@ fn greet(name: &str) -> String {
 
 #[tauri::command]
 fn show_quick_entry(app_handle: tauri::AppHandle) {
+    log::info!("调用了 show_quick_entry 命令");
+
     if let Some(window) = app_handle.get_window("quick_entry") {
+        log::info!("找到已存在的 quick_entry 窗口，尝试显示");
         let _ = window.show();
         let _ = window.set_focus();
         return;
     }
 
+    log::info!("创建新的 quick_entry 窗口");
     let _ = tauri::WindowBuilder::new(
         &app_handle,
         "quick_entry",
@@ -38,10 +44,16 @@ fn show_quick_entry(app_handle: tauri::AppHandle) {
     .resizable(true)
     .inner_size(500.0, 200.0)
     .build();
+
+    log::info!("quick_entry 窗口创建完成");
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 初始化日志系统
+    env_logger::init();
+    log::info!("工作日志记录应用启动");
+
     let app_state = AppState::new();
     let state = app_state.clone();
 
@@ -68,6 +80,7 @@ pub fn run() {
             commands::update_log_entry,
             commands::delete_log_entry,
             commands::fetch_git_commits,
+            commands::generate_summary_stream,
             commands::generate_summary,
             commands::get_settings,
             commands::update_settings,

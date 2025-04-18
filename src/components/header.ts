@@ -17,12 +17,42 @@ class AppHeader extends HTMLElement {
    * 处理添加日志按钮点击
    */
   private handleAddLogClick() {
+    console.log('添加日志按钮被点击');
+    
     // 使用 Tauri API 打开快速添加日志窗口
+    if (this.isTauriAvailable()) {
+      this.openQuickEntryWindow();
+    } else {
+      console.warn('Tauri API 不可用');
+      alert('Tauri API 不可用，无法打开添加日志窗口');
+    }
+  }
+  
+  /**
+   * 检查 Tauri API 是否可用
+   */
+  private isTauriAvailable(): boolean {
     // @ts-ignore - Tauri API
-    if (window.__TAURI__) {
-      // @ts-ignore - Tauri API
-      const { invoke } = window.__TAURI__.core;
-      invoke('show_quick_entry');
+    return typeof window.__TAURI__ !== 'undefined';
+  }
+  
+  /**
+   * 打开快速添加日志窗口
+   */
+  private async openQuickEntryWindow() {
+    try {
+      console.log('尝试动态导入 Tauri API');
+      
+      // 动态导入 Tauri invoke API
+      const tauriModule = await import('@tauri-apps/api/tauri');
+      const invoke = tauriModule.invoke;
+      
+      console.log('成功导入 Tauri API，调用 show_quick_entry 命令');
+      await invoke('show_quick_entry');
+      console.log('快速添加日志窗口已打开');
+    } catch (error) {
+      console.error('调用 Tauri API 失败:', error);
+      alert(`打开添加日志窗口失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

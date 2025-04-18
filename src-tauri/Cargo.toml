@@ -11,13 +11,18 @@ edition = "2021"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "work_record_lib"
+name = "work_record"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 # 定义CLI二进制target
 [[bin]]
 name = "wr-cli"
 path = "src/bin/work-record.rs"
+
+# 定义日志摘要二进制target
+[[bin]]
+name = "wr-summary"
+path = "src/bin/log_summary.rs"
 
 [build-dependencies]
 tauri-build = { version = "1.5", features = [] }
@@ -39,4 +44,6 @@ log = "0.4"
 dirs = "5.0"
 clap = { version = "4.4", features = ["derive"] }
 env_logger = "0.10.0"
+futures-util = "0.3.31"
+colored = "2.0.4"
 

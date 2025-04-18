@@ -1,5 +1,6 @@
 use crate::errors::AppError;
 use dirs::home_dir;
+use log;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -76,19 +77,26 @@ impl Settings {
     }
 
     /// 加载设置或使用默认值
-    pub fn load_or_default() -> Self {
+    pub fn load_or_default() -> Result<Self, AppError> {
         let settings_path = Self::get_settings_path();
 
-        if settings_path.exists() {
+        let settings = if settings_path.exists() {
             match fs::read_to_string(&settings_path) {
-                Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+                Ok(content) => serde_json::from_str(&content).map_err(AppError::from)?,
                 Err(_) => Self::default(),
             }
         } else {
             let default_settings = Self::default();
             let _ = default_settings.save();
             default_settings
+        };
+
+        // 确保日志目录存在
+        if let Err(e) = settings.ensure_log_dirs_exist() {
+            log::warn!("无法创建日志目录: {}", e);
         }
+
+        Ok(settings)
     }
 
     /// 保存设置到文件
@@ -115,6 +123,35 @@ impl Settings {
         }
 
         Ok(())
+    }
+
+    /// 获取摘要API类型
+    pub fn get_summary_api_type(&self) -> u8 {
+        if self.use_local_ollama {
+            0 // 本地Ollama
+        } else if self.llm_api_url.contains("dashscope.aliyuncs.com") {
+            2 // 百炼API
+        } else {
+            1 // 标准OpenAI API
+        }
+    }
+
+    /// 获取摘要API密钥
+    pub fn get_summary_api_key(&self, api_type: u8) -> String {
+        if api_type == 0 {
+            // 本地Ollama不需要API密钥
+            String::new()
+        } else {
+            self.llm_api_key.clone()
+        }
+    }
+
+    /// 获取摘要API URL
+    pub fn get_summary_api_url(&self, api_type: u8) -> String {
+        match api_type {
+            0 => format!("{}/api/generate", self.ollama_address),
+            _ => self.llm_api_url.clone(),
+        }
     }
 }
 

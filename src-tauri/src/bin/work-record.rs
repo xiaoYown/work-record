@@ -1,4 +1,4 @@
-use work_record_lib::cli;
+use work_record::cli;
 
 #[tokio::main]
 async fn main() {

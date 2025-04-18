@@ -75,13 +75,22 @@ class LogEntryForm extends HTMLElement {
 
     try {
       // @ts-ignore - Tauri API
-      const { invoke } = window.__TAURI__.core;
+      if (!window.__TAURI__) {
+        this.showError('Tauri API 不可用');
+        return;
+      }
+      
+      // @ts-ignore - Tauri API
+      const { invoke } = window.__TAURI__;
+      console.log('调用添加日志接口，内容:', content);
+      
       await invoke('add_log_entry', {
         content,
         source: 'manual',
         tags: Array.from(this.selectedTags),
       });
 
+      console.log('日志添加成功');
       this.showSuccess('日志添加成功');
       this.resetForm();
       
@@ -100,7 +109,15 @@ class LogEntryForm extends HTMLElement {
   private async handleFetchGit() {
     try {
       // @ts-ignore - Tauri API
-      const { invoke } = window.__TAURI__.core;
+      if (!window.__TAURI__) {
+        this.showError('Tauri API 不可用');
+        return;
+      }
+      
+      // @ts-ignore - Tauri API
+      const { invoke } = window.__TAURI__;
+      console.log('正在获取Git提交...');
+      
       const today = new Date().toISOString().split('T')[0];
       const commits = await invoke('fetch_git_commits', { date: today });
       

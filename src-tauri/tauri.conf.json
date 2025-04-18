@@ -67,6 +67,17 @@
         "width": 800,
         "visible": false,
         "center": true
+      },
+      {
+        "width": 500,
+        "height": 200,
+        "resizable": true,
+        "title": "快速添加日志",
+        "center": true,
+        "url": "quick_entry.html",
+        "visible": false,
+        "label": "quick_entry",
+        "alwaysOnTop": true
       }
     ]
   }

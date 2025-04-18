@@ -14,7 +14,11 @@ pub struct AppState {
 impl AppState {
     /// 创建新的应用状态
     pub fn new() -> Self {
-        let settings = Settings::load_or_default();
+        let settings = Settings::load_or_default().unwrap_or_else(|_| {
+            log::warn!("无法加载设置，使用默认值");
+            Settings::default()
+        });
+
         Self {
             settings: Arc::new(Mutex::new(settings)),
             app_handle: Arc::new(Mutex::new(None)),

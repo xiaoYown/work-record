@@ -7,6 +7,9 @@ use chrono::{NaiveDate, Utc};
 use std::collections::HashMap;
 use std::path::Path;
 use tauri::{AppHandle, GlobalShortcutManager, Manager, State};
+use log;
+use std::sync::{Arc, RwLock};
+use serde_json::json;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::fs;
@@ -29,10 +32,27 @@ pub async fn add_log_entry(
     app_state: State<'_, AppState>,
 ) -> Result<(), String> {
     let settings = app_state.get_settings();
+    
+    // 确保日志目录存在
+    if let Err(e) = settings.ensure_log_dirs_exist() {
+        return Err(format!("创建日志目录失败: {}", e));
+    }
+    
     let log_manager = LogManager::new(settings);
     
     let entry = LogEntry::new(content, source, tags);
-    log_manager.add_entry(entry).map_err(|e| e.to_string())
+    match log_manager.add_entry(entry) {
+        Ok(_) => {
+            // 日志记录成功，返回成功
+            Ok(())
+        }
+        Err(e) => {
+            // 记录错误并返回
+            let error_msg = format!("添加日志失败: {}", e);
+            log::error!("{}", error_msg);
+            Err(error_msg)
+        }
+    }
 }
 
 /// 获取指定日期的日志条目
@@ -58,7 +78,88 @@ pub async fn get_log_files(app_state: State<'_, AppState>) -> Result<Vec<String>
     let settings = app_state.get_settings();
     let log_manager = LogManager::new(settings);
     
-    log_manager.get_log_files().map_err(|e| e.to_string())
+    log::info!("收到获取日志文件列表请求");
+    
+    match log_manager.get_log_files() {
+        Ok(files) => {
+            log::info!("成功获取日志文件列表，共 {} 个文件", files.len());
+            if !files.is_empty() {
+                log::debug!("首个日志文件: {}", files[0]);
+                log::debug!("末个日志文件: {}", files.last().unwrap_or(&"无".to_string()));
+                
+                // 添加更多详细信息记录
+                if files.len() > 10 {
+                    log::debug!("前10个文件: {:?}", &files[0..10]);
+                } else {
+                    log::debug!("所有文件: {:?}", files);
+                }
+            } else {
+                log::debug!("日志文件列表为空");
+            }
+            Ok(files)
+        }
+        Err(err) => {
+            let error_type = format!("{:?}", err);
+            let error_msg = format!("获取日志文件列表失败: {}", err);
+            log::error!("{}", error_msg);
+            log::error!("错误类型: {}", error_type);
+            
+            // 根据不同的错误类型提供更具体的错误信息
+            let user_friendly_error = match err {
+                crate::errors::AppError::IoError(io_err) => {
+                    log::error!("IO错误细节: {:?}", io_err.kind());
+                    if let Some(ref_err) = io_err.get_ref() {
+                        log::error!("IO错误内部错误: {:?}", ref_err);
+                    }
+                    
+                    match io_err.kind() {
+                        std::io::ErrorKind::NotFound => {
+                            format!("日志目录不存在，请检查配置是否正确: {}", io_err)
+                        },
+                        std::io::ErrorKind::PermissionDenied => {
+                            format!("没有足够权限访问日志目录，请检查权限设置: {}", io_err)
+                        },
+                        std::io::ErrorKind::ConnectionRefused => {
+                            format!("连接被拒绝，无法访问日志目录: {}", io_err)
+                        },
+                        std::io::ErrorKind::ConnectionReset => {
+                            format!("连接被重置，无法访问日志目录: {}", io_err)
+                        },
+                        std::io::ErrorKind::Interrupted => {
+                            format!("操作被中断: {}", io_err)
+                        },
+                        _ => format!("读取日志目录时出现IO错误: {}", io_err)
+                    }
+                },
+                crate::errors::AppError::LogManagerError(msg) => {
+                    log::error!("日志管理器错误详细信息: {}", msg);
+                    format!("日志管理器错误: {}", msg)
+                },
+                crate::errors::AppError::SettingsError(msg) => {
+                    log::error!("配置错误详细信息: {}", msg);
+                    format!("配置错误: {}", msg)
+                },
+                crate::errors::AppError::SerdeError(serde_err) => {
+                    log::error!("序列化错误: {}", serde_err);
+                    format!("解析日志文件时出现错误: {}", serde_err)
+                },
+                crate::errors::AppError::FsError(fs_err) => {
+                    log::error!("文件系统错误: {}", fs_err);
+                    format!("处理日志文件时出现文件系统错误: {}", fs_err)
+                },
+                crate::errors::AppError::GeneralError(gen_err) => {
+                    log::error!("通用错误: {}", gen_err);
+                    format!("获取日志文件时发生错误: {}", gen_err)
+                },
+                _ => {
+                    log::error!("未识别的错误类型: {:?}", err);
+                    error_msg
+                }
+            };
+            
+            Err(user_friendly_error)
+        }
+    }
 }
 
 /// 更新日志条目
@@ -127,85 +228,143 @@ pub async fn fetch_git_commits(
     Ok(result)
 }
 
-/// 生成日志摘要
+/// 生成流式摘要
+/// 
+/// 流式摘要使用事件机制将摘要内容实时推送到前端
 #[tauri::command]
-pub async fn generate_summary(
-    summary_type: u8,
+pub async fn generate_summary_stream(
+    summary_type: String,
     start_date: Option<String>,
     end_date: Option<String>,
-    title: String,
-    app_state: State<'_, AppState>,
-) -> Result<String, String> {
-    // 转换摘要类型
-    let summary_type = match summary_type {
-        0 => SummaryType::Weekly,
-        1 => SummaryType::Monthly,
-        2 => SummaryType::Quarterly,
+    title: Option<String>,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<(), String> {
+    log::info!("收到生成流式摘要请求: 类型={}, 标题={:?}", summary_type, title);
+    
+    // 发送事件通知前端开始生成
+    app_handle.emit_all("summary-generation-start", ()).map_err(|e| {
+        let err_msg = format!("无法发送摘要开始事件: {}", e);
+        log::error!("{}", err_msg);
+        err_msg
+    })?;
+    
+    // 将字符串类型转换为SummaryType枚举
+    let summary_type_enum = match summary_type.as_str() {
+        "weekly" => SummaryType::Weekly,
+        "monthly" => SummaryType::Monthly, 
+        "quarterly" => SummaryType::Quarterly,
         _ => SummaryType::Custom,
     };
     
-    // 解析日期
-    let start_date = if let Some(date_str) = start_date {
-        Some(
-            NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
-                .map_err(|e| format!("开始日期格式错误：{}", e))?,
-        )
-    } else {
-        None
+    // 解析日期范围
+    let (start_naive_date, end_naive_date) = match summary_type_enum {
+        SummaryType::Custom => {
+            // 自定义类型需要解析日期
+            let start = match start_date {
+                Some(date) => NaiveDate::parse_from_str(&date, "%Y-%m-%d")
+                    .map_err(|e| format!("开始日期格式错误: {}", e))?,
+                None => return Err("自定义摘要类型需要提供开始日期".to_string())
+            };
+            
+            let end = match end_date {
+                Some(date) => NaiveDate::parse_from_str(&date, "%Y-%m-%d")
+                    .map_err(|e| format!("结束日期格式错误: {}", e))?,
+                None => return Err("自定义摘要类型需要提供结束日期".to_string())
+            };
+            
+            (start, end)
+        },
+        _ => {
+            // 使用预定义摘要类型的计算方法
+            calculate_date_range(summary_type_enum)
+        }
     };
     
-    let end_date = if let Some(date_str) = end_date {
-        Some(
-            NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
-                .map_err(|e| format!("结束日期格式错误：{}", e))?,
-        )
-    } else {
-        None
-    };
-    
-    // 创建摘要配置
-    let config = SummaryConfig {
-        summary_type,
-        start_date,
-        end_date,
-        title,
-    };
-    
-    let settings = app_state.get_settings();
+    // 获取该日期范围内的日志
+    let settings = state.get_settings();
     let log_manager = LogManager::new(settings.clone());
     
-    // 获取日志数据
-    let logs = match summary_type {
-        SummaryType::Custom => {
-            if let (Some(start), Some(end)) = (start_date, end_date) {
-                log_manager
-                    .get_entries_in_date_range(&start, &end)
-                    .map_err(|e| e.to_string())?
-            } else {
-                return Err("自定义日期范围需要提供开始和结束日期".to_string());
-            }
-        }
-        _ => {
-            // 根据摘要类型自动计算日期范围
-            let (start, end) = calculate_date_range(summary_type);
-            log_manager
-                .get_entries_in_date_range(&start, &end)
-                .map_err(|e| e.to_string())?
+    let logs = match log_manager.get_entries_in_date_range(&start_naive_date, &end_naive_date) {
+        Ok(logs) => logs,
+        Err(e) => {
+            let err_msg = format!("获取日志失败: {}", e);
+            log::error!("{}", err_msg);
+            
+            // 发送错误事件
+            app_handle.emit_all("summary-generation-error", err_msg.clone()).ok();
+            return Err(err_msg);
         }
     };
     
     if logs.is_empty() {
-        return Err("指定日期范围内没有日志记录".to_string());
+        let err_msg = format!("指定日期范围内没有找到日志记录");
+        log::warn!("{}", err_msg);
+        
+        // 发送错误事件
+        app_handle.emit_all("summary-generation-error", err_msg.clone()).ok();
+        return Err(err_msg);
     }
     
-    // 生成摘要
-    let summary_generator = SummaryGenerator::new(settings);
-    let summary = summary_generator
-        .generate_summary(logs, config)
-        .await
-        .map_err(|e| e.to_string())?;
+    // 发送事件通知前端正在处理
+    app_handle.emit_all(
+        "summary-generation-processing", 
+        format!("正在处理 {} 条日志记录...", logs.len())
+    ).ok();
     
-    Ok(summary)
+    // 创建摘要配置
+    let summary_config = SummaryConfig {
+        summary_type: summary_type_enum,
+        start_date: Some(start_naive_date),
+        end_date: Some(end_naive_date),
+        title: title.unwrap_or_else(|| {
+            if summary_type == "custom" {
+                format!("自定义摘要")
+            } else {
+                format!("{}摘要", match summary_type.as_str() {
+                    "weekly" => "周",
+                    "monthly" => "月",
+                    "quarterly" => "季度",
+                    _ => "",
+                })
+            }
+        }),
+    };
+    
+    // 创建回调函数，用于将流式结果发送给前端
+    let app_handle_clone = app_handle.clone();
+    let progress_callback = move |chunk: &str| {
+        if !chunk.is_empty() {
+            app_handle_clone.emit_all("summary-generation-chunk", chunk).ok();
+        }
+    };
+    
+    // 使用流式方法生成摘要
+    let summary_generator = SummaryGenerator::new(settings.clone());
+    let result = match summary_generator.generate_summary_with_stream(logs, summary_config, progress_callback).await {
+        Ok(summary) => {
+            log::info!("流式摘要生成成功");
+            
+            // 发送完成事件
+            app_handle.emit_all("summary-generation-complete", summary).map_err(|e| {
+                let err_msg = format!("无法发送摘要完成事件: {}", e);
+                log::error!("{}", err_msg);
+                err_msg
+            })?;
+            
+            Ok(())
+        },
+        Err(e) => {
+            let err_msg = format!("生成摘要失败: {}", e);
+            log::error!("{}", err_msg);
+            
+            // 发送错误事件
+            app_handle.emit_all("summary-generation-error", err_msg.clone()).ok();
+            Err(err_msg)
+        }
+    };
+    
+    result
 }
 
 /// 根据摘要类型计算日期范围
@@ -239,6 +398,30 @@ pub fn calculate_date_range(summary_type: SummaryType) -> (NaiveDate, NaiveDate)
             (now, now)
         }
     }
+}
+
+/// 生成摘要（向后兼容旧接口）
+#[tauri::command(rename_all = "camelCase")]
+pub async fn generate_summary(
+    summary_type: Option<String>,
+    start_date: Option<String>,
+    end_date: Option<String>,
+    title: Option<String>,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<(), String> {
+    log::info!("收到旧版生成摘要请求，转发到流式摘要接口");
+    
+    // 检查summary_type是否存在
+    let actual_summary_type = match summary_type {
+        Some(st) => st,
+        None => return Err("缺少摘要类型参数 'summary_type'".to_string())
+    };
+    
+    log::debug!("参数处理: 摘要类型={}, 开始日期={:?}, 结束日期={:?}", 
+                actual_summary_type, start_date, end_date);
+    
+    generate_summary_stream(actual_summary_type, start_date, end_date, title, state, app_handle).await
 }
 
 /// 获取应用设置

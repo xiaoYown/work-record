@@ -1,0 +1,77 @@
+# .cursorrules
+
+## general
+
+- 所有代码和文档使用中文。
+- 所有函数、方法与变量应显式声明类型（除非能由编译器清晰推断）。
+- 每个文件仅定义一个主模块或结构。
+- 避免使用魔法数字，统一使用常量或枚举。
+- 所有 unwrap 和 expect 必须具备清晰上下文或注释说明。
+- 使用 clippy 和 rustfmt 保持代码风格一致。
+
+## naming
+
+- 类型（结构体、枚举、trait）：`PascalCase`
+- 函数、方法、变量：`snake_case`
+- 常量：`SCREAMING_SNAKE_CASE`
+- 模块/文件名：`snake_case`
+- 生命周期：使用 `a` 风格的小写
+- 布尔变量：使用 `is_`、`has_`、`can_` 等动词前缀
+- 函数命名：使用动词命名，例如 `load_config`, `handle_event`
+
+## functions
+
+- 每个函数职责单一，长度不超过 20 行
+- 提前返回避免嵌套
+- 使用结构体传参与返回，避免过多参数
+- 返回布尔值使用 is_x/has_x/can_x 等命名
+- 无返回值使用 execute_x/perform_x/handle_x 命名
+- 函数应显式声明所有参数与返回值类型
+- 函数体中不应留空行
+- 使用高阶函数（如 map/filter）优先于嵌套循环
+- 对于简单的闭包表达式，使用 `|x| expr`，复杂则提取为具名函数
+
+## types
+
+- 避免滥用原始类型，封装为结构体或枚举
+- 数据结构默认不可变，需变更时显式标记 `mut`
+- 使用 const/static 定义不可变全局常量
+- 所有类型必须文档注释，描述用途和使用方式
+- 提供 From/TryFrom/Into 实现支持类型转换
+
+## modules
+
+- 每个模块聚焦单一职责，结构扁平优于嵌套
+- 模块结构建议：domain, infrastructure, application, presentation
+- 所有模块都应暴露清晰 API（使用 pub use 导出公共接口）
+- mod.rs 文件用于组织子模块
+
+## error_handling
+
+- 使用 Result<T, E> 或 Option<T> 进行错误管理
+- 错误类型应实现 std::error::Error
+- 禁止随意使用 unwrap/expect，测试代码除外
+- 使用 anyhow/thiserror 简化错误处理与传播
+- 捕获错误时应添加上下文（例如 .context("操作失败")）
+
+## docs
+
+- 所有对外 API、类型、函数使用 `///` 进行文档注释
+- 对复杂逻辑使用块注释解释实现原因
+- 所有公开模块与结构体应有文档与使用示例
+- 运行 `cargo doc` 验证文档完整性
+
+## async
+
+- I/O 操作应使用 async 实现
+- 使用 tokio 或 async-std 等主流 runtime
+- 优先使用非阻塞流式处理（例如 async stream）
+
+## tools
+
+- 启用 clippy 检查
+- 启用 rustfmt 格式化
+- 使用 cargo test 保持测试覆盖率
+- 使用 serde 管理结构序列化
+- 使用 build.rs 实现代码生成（如：代码模板、版本注入）
+

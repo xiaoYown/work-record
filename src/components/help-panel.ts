@@ -1,6 +1,8 @@
 /**
  * 使用说明面板
  */
+import { Icons } from './icons';
+
 class HelpPanel extends HTMLElement {
   constructor() {
     super();
@@ -94,8 +96,8 @@ class HelpPanel extends HTMLElement {
         }
 
         .feature-icon {
-          font-size: 24px;
           margin-bottom: 12px;
+          color: var(--accent);
         }
 
         .feature-title {
@@ -168,22 +170,22 @@ class HelpPanel extends HTMLElement {
           
           <div class="feature-list">
             <div class="feature-item">
-              <div class="feature-icon">📝</div>
+              <div class="feature-icon">${Icons.edit}</div>
               <div class="feature-title">日志记录</div>
               <div class="feature-description">快速记录工作内容和时间</div>
             </div>
             <div class="feature-item">
-              <div class="feature-icon">📊</div>
+              <div class="feature-icon">${Icons.summary}</div>
               <div class="feature-title">摘要生成</div>
               <div class="feature-description">自动生成工作内容摘要</div>
             </div>
             <div class="feature-item">
-              <div class="feature-icon">🔍</div>
+              <div class="feature-icon">${Icons.files}</div>
               <div class="feature-title">工作分析</div>
               <div class="feature-description">查看工作时间分布</div>
             </div>
             <div class="feature-item">
-              <div class="feature-icon">🎨</div>
+              <div class="feature-icon">${Icons.theme}</div>
               <div class="feature-title">主题切换</div>
               <div class="feature-description">支持三种视觉主题</div>
             </div>
@@ -241,37 +243,36 @@ class HelpPanel extends HTMLElement {
             <li>
               <strong>add</strong> - 添加新的工作日志
               <div class="code-block">
-                <pre><code>work-record add --content "修复了登录页面的 UI 问题" --project "前端系统" --time 2</code></pre>
+                <pre><code>work-record add "修复了登录页面的 UI 问题" --source "meeting" --tags "前端,UI" --date "2023-10-01"</code></pre>
               </div>
-              <p class="command-desc">参数说明: --content 工作内容, --project 项目名称, --time 花费的小时数</p>
+              <p class="command-desc">参数说明: content 日志内容(必需), --source 日志来源 (默认: manual), --tags 标签列表, --date 指定日期 (默认: 今天)</p>
             </li>
             <li>
-              <strong>list</strong> - 列出指定日期范围的日志
+              <strong>list</strong> - 列出指定日期的日志
               <div class="code-block">
-                <pre><code>work-record list --from 2023-10-01 --to 2023-10-07</code></pre>
+                <pre><code>work-record list --date "2023-10-01" --format json</code></pre>
               </div>
-              <p class="command-desc">参数说明: --from 开始日期, --to 结束日期 (默认为当天)</p>
+              <p class="command-desc">参数说明: --date 指定日期 (默认: 今天), --format 输出格式 (text/json)</p>
             </li>
             <li>
-              <strong>generate</strong> - 生成日志摘要
+              <strong>summary</strong> - 生成日志摘要
               <div class="code-block">
-                <pre><code>work-record generate --from 2023-10-01 --to 2023-10-07 --format markdown --output report.md</code></pre>
+                <pre><code>work-record summary --type weekly --start-date "2023-10-01" --end-date "2023-10-07" --title "周报" --output report.md</code></pre>
               </div>
-              <p class="command-desc">参数说明: --from 开始日期, --to 结束日期, --format 输出格式 (markdown/text/html), --output 输出文件</p>
+              <p class="command-desc">参数说明: --type 摘要类型 (daily/weekly/monthly/quarterly/custom), --start-date/--end-date 日期范围, --title 摘要标题, --output 输出文件</p>
             </li>
             <li>
-              <strong>config</strong> - 显示或修改配置
+              <strong>config</strong> - 显示应用配置信息
               <div class="code-block">
-                <pre><code>work-record config get log_storage_dir
-work-record config set log_storage_dir /path/to/logs</code></pre>
+                <pre><code>work-record config</code></pre>
               </div>
             </li>
           </ul>
           
           <h3>示例工作流</h3>
           <ol>
-            <li>每天记录工作内容: <code>work-record add --content "完成了用户模块重构" --time 3.5</code></li>
-            <li>周末生成周报: <code>work-record generate --from monday --to today --format markdown --output weekly-report.md</code></li>
+            <li>每天记录工作内容: <code>work-record add "完成了用户模块重构" --source "coding" --tags "后端,重构"</code></li>
+            <li>周末生成周报: <code>work-record summary --type weekly --title "本周工作总结" --output weekly-report.md</code></li>
           </ol>
           
           <p class="note">注意: 命令行工具会使用与图形界面相同的配置文件，保持数据同步。</p>

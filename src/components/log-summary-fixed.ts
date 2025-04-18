@@ -1,13 +1,13 @@
 /**
- * 日志摘要面板组件
+ * 修复后的日志摘要面板组件
  */
+import { invoke } from '@tauri-apps/api/tauri';
+
 class LogSummaryPanel extends HTMLElement {
   private startDate: string = '';
   private endDate: string = '';
   private summaryTitle: string = '';
   private summaryType: number = 0; // 0: 周, 1: 月, 2: 季度, 3: 自定义
-  private currentSummary: string = ''; // 存储当前累积的摘要内容
-  private eventListenersActive: boolean = false; // 跟踪是否已注册事件监听器
 
   constructor() {
     super();
@@ -18,107 +18,6 @@ class LogSummaryPanel extends HTMLElement {
     this.render();
     this.setupFormInitialValues();
     this.setupEventListeners();
-    this.setupTauriEventListeners();
-  }
-
-  disconnectedCallback() {
-    // 在组件移除时清理事件监听器
-    this.removeTauriEventListeners();
-  }
-
-  /**
-   * 设置Tauri事件监听器
-   */
-  private setupTauriEventListeners() {
-    if (this.eventListenersActive) return;
-
-    try {
-      // @ts-ignore - Tauri API
-      const { listen } = window.__TAURI__.event;
-
-      // 监听摘要生成开始事件
-      listen('summary-generation-start', () => {
-        console.log('摘要生成开始');
-        this.setGeneratingState(true);
-        // 重置当前摘要内容
-        this.currentSummary = '';
-        
-        // 创建或清空结果容器
-        const resultContainer = this.shadowRoot?.getElementById('summary-result');
-        if (resultContainer) {
-          resultContainer.innerHTML = `
-            <div class="result-header">
-              <h3>${this.summaryTitle}</h3>
-            </div>
-            <div id="result-stream-content" class="result-content"></div>
-          `;
-        }
-      });
-
-      // 监听处理中事件
-      listen('summary-generation-processing', (event: { payload: string }) => {
-        console.log('摘要生成处理中:', event.payload);
-        // 可以显示一些处理状态或总的进度，如果需要
-      });
-
-      // 监听分块内容事件
-      listen('summary-generation-chunk', (event: { payload: string }) => {
-        const chunk = event.payload;
-        if (!chunk) return;
-
-        // 累积摘要内容
-        this.currentSummary += chunk;
-        
-        // 更新流式显示
-        const streamContent = this.shadowRoot?.getElementById('result-stream-content');
-        if (streamContent) {
-          streamContent.innerHTML = this.formatMarkdown(this.currentSummary);
-          // 自动滚动到底部以查看最新内容
-          streamContent.scrollTop = streamContent.scrollHeight;
-        }
-      });
-
-      // 监听完成事件
-      listen('summary-generation-complete', (event: { payload: string }) => {
-        console.log('摘要生成完成');
-        const summary = event.payload || '';
-        
-        // 显示完整摘要结果
-        this.showSummaryResult(summary);
-        this.setGeneratingState(false);
-      });
-
-      // 监听错误事件
-      listen('summary-generation-error', (event: { payload: string }) => {
-        console.error('摘要生成错误:', event.payload);
-        this.showError(event.payload || '生成摘要失败，请重试');
-        this.setGeneratingState(false);
-      });
-
-      this.eventListenersActive = true;
-    } catch (error: unknown) {
-      console.error('设置Tauri事件监听器失败:', error);
-    }
-  }
-
-  /**
-   * 移除Tauri事件监听器
-   */
-  private removeTauriEventListeners() {
-    try {
-      // @ts-ignore - Tauri API
-      const { listen } = window.__TAURI__.event;
-      
-      listen.drop('summary-generation-start');
-      listen.drop('summary-generation-processing');
-      listen.drop('summary-generation-chunk');
-      listen.drop('summary-generation-complete');
-      listen.drop('summary-generation-error');
-      
-      this.eventListenersActive = false;
-    } catch (error: unknown) {
-      console.error('移除Tauri事件监听器失败:', error);
-    }
   }
 
   /**
@@ -317,12 +216,8 @@ class LogSummaryPanel extends HTMLElement {
     if (!this.shadowRoot) return;
 
     try {
-      // 设置初始加载状态
+      // 显示加载状态
       this.setGeneratingState(true);
-      
-      // 调用后端生成摘要
-      // @ts-ignore - Tauri API
-      const { invoke } = window.__TAURI__.core;
       
       // 将数字类型的summaryType转换为对应的字符串类型
       let summaryTypeString: string;
@@ -343,6 +238,10 @@ class LogSummaryPanel extends HTMLElement {
           summaryTypeString = "weekly"; // 默认值
       }
       
+      console.log('准备生成摘要，类型:', this.summaryType, '(', summaryTypeString, ')', 
+                  '标题:', this.summaryTitle, 
+                  '日期范围:', this.summaryType === 3 ? `${this.startDate} 至 ${this.endDate}` : '自动');
+      
       const params: any = {
         summaryType: summaryTypeString,  // 使用驼峰命名，匹配后端camelCase配置
         title: this.summaryTitle,
@@ -356,17 +255,43 @@ class LogSummaryPanel extends HTMLElement {
       
       console.log('调用generate_summary命令，参数:', JSON.stringify(params));
       
-      // 调用后端接口，但不等待结果（结果通过事件传递）
-      invoke('generate_summary', params).catch((error: unknown) => {
-        console.error('调用摘要生成接口失败:', error);
-        this.showError(typeof error === 'string' ? error : '调用摘要生成接口失败，请重试');
-        this.setGeneratingState(false);
-      });
+      // 使用导入的invoke而不是window.__TAURI__
+      const response = await invoke('generate_summary', params);
       
-      // 注意：不再在这里设置非生成状态，将在收到完成事件时设置
-    } catch (error: unknown) {
+      // 确保我们有一个字符串类型的摘要
+      const summary = (typeof response === 'string') ? response : '';
+      
+      console.log('摘要生成成功，结果长度:', summary.length);
+      
+      // 显示摘要结果
+      this.showSummaryResult(summary);
+      this.setGeneratingState(false);
+    } catch (error) {
       console.error('生成摘要失败:', error);
-      this.showError(typeof error === 'string' ? error : '生成摘要失败，请重试');
+      
+      // 详细记录错误信息以帮助调试
+      let errorMessage = '生成摘要失败';
+      
+      if (typeof error === 'string') {
+        errorMessage = error;
+        console.error('错误信息(字符串):', error);
+      } else if (error instanceof Error) {
+        errorMessage = `${error.name}: ${error.message}`;
+        console.error('错误详情(Error对象):', {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        });
+      } else if (error && typeof error === 'object') {
+        try {
+          errorMessage = JSON.stringify(error);
+          console.error('错误详情(对象):', error);
+        } catch (e) {
+          console.error('无法序列化错误对象:', e);
+        }
+      }
+      
+      this.showError(errorMessage);
       this.setGeneratingState(false);
     }
   }
@@ -399,24 +324,22 @@ class LogSummaryPanel extends HTMLElement {
   private showSummaryResult(summary: string) {
     if (!this.shadowRoot) return;
     
-    // 确保summary不为null或undefined
-    const safeContent = summary || '';
-
     const resultContainer = this.shadowRoot.getElementById('summary-result');
     if (resultContainer) {
+      resultContainer.style.display = 'block';
       resultContainer.innerHTML = `
         <div class="result-header">
           <h3>${this.summaryTitle}</h3>
           <button id="copy-btn" class="copy-btn">复制</button>
         </div>
-        <div class="result-content">${this.formatMarkdown(safeContent)}</div>
+        <div class="result-content">${this.formatMarkdown(summary)}</div>
       `;
 
       // 绑定复制按钮
       const copyBtn = this.shadowRoot.getElementById('copy-btn');
       if (copyBtn) {
         copyBtn.addEventListener('click', () => {
-          navigator.clipboard.writeText(safeContent)
+          navigator.clipboard.writeText(summary)
             .then(() => this.showSuccess('摘要已复制到剪贴板'))
             .catch(() => this.showError('复制失败，请手动选择文本复制'));
         });
@@ -495,7 +418,7 @@ class LogSummaryPanel extends HTMLElement {
         h2 {
           font-size: 20px;
           margin-bottom: 20px;
-          color: #333;
+          color: var(--text-primary);
         }
 
         .summary-form {
@@ -513,7 +436,7 @@ class LogSummaryPanel extends HTMLElement {
 
         .form-group label {
           font-weight: 500;
-          color: #555;
+          color: var(--text-secondary);
         }
 
         .radio-group {
@@ -530,115 +453,105 @@ class LogSummaryPanel extends HTMLElement {
 
         input[type="text"], input[type="date"] {
           padding: 8px 12px;
-          border: 1px solid #ddd;
-          border-radius: 4px;
+          border: 1px solid var(--border-color);
+          border-radius: var(--border-radius);
+          background-color: var(--bg-elevated);
+          color: var(--text-primary);
           font-size: 14px;
         }
 
         input[type="radio"] {
           margin: 0;
+          accent-color: var(--accent);
         }
 
-        .date-fields {
+        #date-fields {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 15px;
-          align-items: center;
-        }
-
-        .date-fields.disabled {
-          opacity: 0.6;
-        }
-
-        .date-field {
-          display: grid;
-          grid-template-columns: auto 1fr;
-          align-items: center;
           gap: 10px;
         }
 
-        button {
-          background-color: #0d6efd;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          padding: 10px 20px;
-          cursor: pointer;
-          font-size: 14px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          transition: background-color 0.2s;
+        #date-fields.disabled {
+          opacity: 0.6;
         }
 
-        button:hover:not(:disabled) {
-          background-color: #0062cc;
+        button {
+          padding: 10px 16px;
+          background-color: var(--accent);
+          color: white;
+          border: none;
+          border-radius: var(--border-radius);
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: background-color var(--transition-base);
+        }
+
+        button:hover {
+          background-color: var(--accent-hover);
         }
 
         button:disabled {
-          background-color: #cccccc;
+          background-color: var(--border-color);
           cursor: not-allowed;
         }
 
-        .form-actions {
-          display: flex;
-          justify-content: flex-end;
-          margin-top: 10px;
-        }
-
         .loading-indicator {
-          width: 20px;
-          height: 20px;
-          border: 2px solid rgba(255, 255, 255, 0.3);
-          border-top: 2px solid white;
-          border-radius: 50%;
           display: none;
-        }
-
-        .loading-indicator.active {
-          display: inline-block;
+          margin-left: 10px;
+          width: 24px;
+          height: 24px;
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          border-radius: 50%;
+          border-top-color: #fff;
           animation: spin 1s linear infinite;
         }
-
+        
+        .loading-indicator.active {
+          display: inline-block;
+        }
+        
         @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
+          to { transform: rotate(360deg); }
         }
 
-        .summary-result {
+        #summary-result {
           margin-top: 30px;
-          border: 1px solid #eee;
-          border-radius: 4px;
-          overflow: hidden;
+          border: 1px solid var(--border-color);
+          border-radius: var(--border-radius);
+          background-color: var(--bg-elevated);
+          padding: 20px;
         }
 
         .result-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 15px;
-          background-color: #f5f5f5;
-          border-bottom: 1px solid #eee;
+          margin-bottom: 15px;
+          padding-bottom: 10px;
+          border-bottom: 1px solid var(--border-color);
         }
 
         .result-header h3 {
           margin: 0;
-          font-size: 16px;
+          font-size: 18px;
+          color: var(--text-primary);
         }
 
         .copy-btn {
-          padding: 6px 12px;
-          font-size: 13px;
+          padding: 5px 10px;
+          font-size: 12px;
         }
 
         .result-content {
-          padding: 20px;
-          white-space: pre-line;
-          background-color: #ffffff;
           line-height: 1.6;
-          max-height: 500px;
-          overflow-y: auto;
+          color: var(--text-primary);
+        }
+
+        .result-content h1, .result-content h2, .result-content h3 {
+          margin-top: 20px;
+          margin-bottom: 10px;
+          color: var(--text-primary);
         }
 
         .toast {
@@ -646,7 +559,7 @@ class LogSummaryPanel extends HTMLElement {
           bottom: 20px;
           right: 20px;
           padding: 10px 15px;
-          border-radius: 4px;
+          border-radius: var(--border-radius);
           color: white;
           font-size: 14px;
           opacity: 0;
@@ -655,79 +568,62 @@ class LogSummaryPanel extends HTMLElement {
         }
 
         .toast.success {
-          background-color: #4caf50;
+          background-color: var(--success);
           opacity: 1;
         }
 
         .toast.error {
-          background-color: #f44336;
+          background-color: var(--error);
           opacity: 1;
-        }
-
-        h2, h3 {
-          color: #333;
-        }
-
-        .section-divider {
-          height: 1px;
-          background-color: #eee;
-          margin: 20px 0;
         }
       </style>
 
-      <h2>日志摘要生成</h2>
-
+      <h2>生成工作摘要</h2>
+      
       <form id="summary-form" class="summary-form">
         <div class="form-group">
           <label>摘要类型</label>
           <div class="radio-group">
             <div class="radio-option">
               <input type="radio" id="summary-type-weekly" name="summary-type" value="0">
-              <label for="summary-type-weekly">周摘要</label>
+              <label for="summary-type-weekly">周报告</label>
             </div>
             <div class="radio-option">
               <input type="radio" id="summary-type-monthly" name="summary-type" value="1">
-              <label for="summary-type-monthly">月摘要</label>
+              <label for="summary-type-monthly">月报告</label>
             </div>
             <div class="radio-option">
               <input type="radio" id="summary-type-quarterly" name="summary-type" value="2">
-              <label for="summary-type-quarterly">季度摘要</label>
+              <label for="summary-type-quarterly">季报告</label>
             </div>
             <div class="radio-option">
               <input type="radio" id="summary-type-custom" name="summary-type" value="3">
-              <label for="summary-type-custom">自定义时间范围</label>
+              <label for="summary-type-custom">自定义</label>
             </div>
           </div>
         </div>
-
-        <div id="date-fields" class="date-fields disabled">
-          <div class="date-field">
-            <label for="start-date">开始日期</label>
-            <input type="date" id="start-date" name="start-date" disabled>
-          </div>
-          <div class="date-field">
-            <label for="end-date">结束日期</label>
-            <input type="date" id="end-date" name="end-date" disabled>
-          </div>
-        </div>
-
+        
         <div class="form-group">
-          <label for="summary-title">摘要标题</label>
-          <input type="text" id="summary-title" name="summary-title" required>
+          <label>日期范围</label>
+          <div id="date-fields" class="disabled">
+            <input type="date" id="start-date" disabled>
+            <input type="date" id="end-date" disabled>
+          </div>
         </div>
-
+        
+        <div class="form-group">
+          <label for="summary-title">标题</label>
+          <input type="text" id="summary-title">
+        </div>
+        
         <div class="form-actions">
-          <button type="submit" id="generate-btn">
-            生成摘要
-            <div id="loading-indicator" class="loading-indicator"></div>
-          </button>
+          <button type="submit" id="generate-btn">生成摘要</button>
+          <div id="loading-indicator" class="loading-indicator"></div>
         </div>
       </form>
-
-      <div class="section-divider"></div>
-
-      <div id="summary-result"></div>
-
+      
+      <div id="summary-result" style="display:none;"></div>
+      
       <div id="toast" class="toast"></div>
     `;
   }

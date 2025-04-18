@@ -11,7 +11,8 @@ import './components/header';
 import './components/settings-panel';
 import './components/log-files-panel';
 import './components/log-entry-form';
-import './components/log-summary-panel';
+// import './components/log-summary-panel'; // 注释掉有问题的组件
+import './components/log-summary-fixed'; // 使用修复后的日志摘要面板
 import './components/help-panel';
 
 // 初始化应用
@@ -27,6 +28,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 设置事件监听器
   await setupEventListeners();
+  
+  console.log('应用初始化完成，使用修复后的日志摘要面板');
 });
 
 // 导航到指定页面

@@ -1,0 +1,1 @@
+{"log_storage_dir":"/tmp/work_logs","log_output_dir":"/tmp/work_logs/summaries","git_author":"","auto_open_window":false,"shortcut":"Alt+Shift+L","enable_shortcut":true,"use_local_ollama":true,"ollama_address":"http://localhost:11434","ollama_model":"llama3","llm_api_key":"","llm_api_url":""}

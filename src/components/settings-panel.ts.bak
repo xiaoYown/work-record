@@ -178,19 +178,11 @@ class SettingsPanel extends HTMLElement {
 
     // 获取表单数据
     formData.forEach((value, key) => {
-      if (key === 'auto_open_window' || key === 'use_local_ollama' || key === 'enable_shortcut') {
+      if (key === 'auto_open_window' || key === 'use_local_ollama') {
         // 处理复选框
         newSettings[key] = value === 'on';
       } else {
         newSettings[key] = value;
-      }
-    });
-
-    // 特殊处理复选框，因为未选中的复选框不会出现在FormData中
-    const checkboxes = ['auto_open_window', 'use_local_ollama', 'enable_shortcut'];
-    checkboxes.forEach(id => {
-      if (!formData.has(id)) {
-        newSettings[id] = false;
       }
     });
 
@@ -204,18 +196,7 @@ class SettingsPanel extends HTMLElement {
       // 调用Tauri命令保存设置
       await invoke('update_settings', { settings: newSettings });
       
-      // 从存储中重新加载设置数据，确保UI与存储中的值一致
-      try {
-        // 从后端获取实际保存的设置
-        this.settings = await invoke('get_settings');
-        // 更新UI以反映实际保存的设置值
-        this.updateForm();
-      } catch (loadError) {
-        console.error('重新加载设置失败:', loadError);
-        // 如果重新加载失败，则使用前端的设置（备选方案）
-        this.settings = newSettings;
-      }
-      
+      this.settings = newSettings;
       this.showSuccess('设置已保存');
       
       // 恢复按钮状态
@@ -353,12 +334,6 @@ class SettingsPanel extends HTMLElement {
 
         .form-group.directory {
           grid-template-columns: 200px minmax(0, 1fr) auto;
-        }
-
-        .form-group.api-info-container {
-          grid-template-columns: 1fr;
-          grid-column: 1 / -1;
-          margin-top: 10px;
         }
 
         .form-group label {
@@ -556,28 +531,6 @@ class SettingsPanel extends HTMLElement {
           border-radius: 3px;
           border: 1px solid var(--border-color);
         }
-
-        .api-info {
-          margin-top: 10px;
-          padding: 15px;
-          background-color: var(--bg-primary);
-          border-radius: var(--border-radius);
-          border: 1px solid var(--border-color);
-          width: 100%;
-          grid-column: 1 / -1; /* 占据所有列 */
-          font-size: var(--font-size-sm);
-          box-shadow: var(--shadow-sm);
-        }
-
-        .api-info p {
-          margin: 0;
-          margin-bottom: 10px;
-          line-height: 1.5;
-        }
-
-        .api-info strong {
-          font-weight: 600;
-        }
       </style>
 
       <h2>设置</h2>
@@ -637,11 +590,6 @@ class SettingsPanel extends HTMLElement {
           </div>
 
           <div class="form-group">
-            <label for="enable_shortcut">启用快捷键</label>
-            <input type="checkbox" id="enable_shortcut" name="enable_shortcut">
-          </div>
-
-          <div class="form-group">
             <label for="auto_open_window">启动时自动打开窗口</label>
             <input type="checkbox" id="auto_open_window" name="auto_open_window">
           </div>
@@ -673,20 +621,6 @@ class SettingsPanel extends HTMLElement {
           <div class="form-group">
             <label for="llm_api_key">LLM API Key</label>
             <input type="password" id="llm_api_key" name="llm_api_key">
-          </div>
-           
-          <div class="form-group api-info-container">
-            <div class="api-info">
-              <p><strong>API配置说明：</strong></p>
-              <p>
-                <strong>OpenAI API：</strong> 设置 API URL 为 <code>https://api.openai.com/v1/chat/completions</code>，
-                API Key 为您的 OpenAI Key。
-              </p>
-              <p>
-                <strong>阿里云百炼API：</strong> 设置 API URL 为 <code>https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions</code>，
-                API Key 为您的百炼 API Key。
-              </p>
-            </div>
           </div>
         </div>
 

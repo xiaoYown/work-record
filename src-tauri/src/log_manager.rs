@@ -1,6 +1,7 @@
 use crate::errors::AppError;
 use crate::settings::Settings;
 use chrono::{DateTime, Local, NaiveDate, Utc};
+use log;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -72,7 +73,7 @@ impl LogManager {
     }
 
     /// 获取指定日期的日志文件路径
-    fn get_log_file_path(&self, date: &NaiveDate) -> PathBuf {
+    pub fn get_log_file_path(&self, date: &NaiveDate) -> PathBuf {
         let file_name = format!("{}.json", date.format("%Y-%m-%d"));
         Path::new(&self.settings.log_storage_dir).join(file_name)
     }
@@ -199,28 +200,53 @@ impl LogManager {
 
     /// 获取所有日志文件
     pub fn get_log_files(&self) -> Result<Vec<String>, AppError> {
+        log::info!("开始获取日志文件列表");
+
+        // 确保日志目录存在
         self.settings.ensure_log_dirs_exist()?;
 
         let dir = Path::new(&self.settings.log_storage_dir);
         let mut files = Vec::new();
 
+        log::debug!("查找日志目录: {}", dir.display());
+
         if !dir.exists() {
+            log::warn!("日志目录不存在: {}", dir.display());
             return Ok(files);
         }
 
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
+        log::debug!("日志目录存在，开始读取文件列表");
 
-            if path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("json") {
-                if let Some(file_name) = path.file_name().and_then(|name| name.to_str()) {
-                    files.push(file_name.to_string());
+        // 遍历目录内容
+        for entry_result in fs::read_dir(dir)? {
+            match entry_result {
+                Ok(entry) => {
+                    let path = entry.path();
+                    log::trace!("找到文件: {}", path.display());
+
+                    if path.is_file()
+                        && path.extension().and_then(|ext| ext.to_str()) == Some("json")
+                    {
+                        if let Some(file_name) = path.file_name().and_then(|name| name.to_str()) {
+                            log::debug!("添加日志文件: {}", file_name);
+                            files.push(file_name.to_string());
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("读取目录项失败: {}", e);
+                    continue; // 跳过无法读取的项
                 }
             }
         }
 
         // 按日期排序（最新的在前）
         files.sort_by(|a, b| b.cmp(a));
+
+        log::info!("找到 {} 个日志文件", files.len());
+        if !files.is_empty() {
+            log::debug!("最新的日志文件: {}", files[0]);
+        }
 
         Ok(files)
     }
